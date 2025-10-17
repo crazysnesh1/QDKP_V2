@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: Quick DKP V2 - Core
 ## Author: molodoy3561@gmail.com
-## Version: 2.6.8
+## Version: 2.6.7.13
 ## Notes: Complete system for in-game DKP managment
 ## OptionalDeps: AtlasLoot, DBM-Core, BigWigs
 ## DefaultState: Enabled
@@ -22,10 +22,7 @@ Code\Lib\LibBabble-Inventory-3.0.lua
 Code\Lib\AceConsole-3.0.lua
 Code\Lib\Deformat-2.0.lua
 
-Code\Lib\UTF8\utf8data.lua
-Code\Lib\UTF8\utf8.lua
-
-Options.lua
+Code\DefaultOptions.lua
 Code\Core\DKP_Editing.lua
 Code\Core\DKP_Management.lua
 Code\Core\Events.lua
@@ -43,6 +40,7 @@ Code\Core\Misc.lua
 Code\Core\Bidman.lua
 
 Local\enGB.lua
+Local\frFR.lua
 Local\ruRU.lua
 
 Code\Logging\Constants.lua
