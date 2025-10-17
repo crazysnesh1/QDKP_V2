@@ -30,6 +30,11 @@ myClass.PlayersColor.External = { r = 0.4, g = 1, b = 0.4 }
 myClass.PlayersColor.NoClass = { r = 0.5, g = 0.5, b = 0.5 }
 myClass.PlayersColor.NoGuild = { r = 0.5, g = 0.5, b = 0.5 }
 
+myClass.ShowAlts = true  -- по умолчанию показываем альтов
+myClass.SearchText = ""
+myClass.SearchByMain = false
+myClass.SearchBox = nil
+
 myClass.ColumnWidth = {
     deltatotal = 40,
     deltaspent = 40,
@@ -45,6 +50,43 @@ function myClass.OnLoad(self)
     self.Frame = QDKP2_Frame2
     self.MenuFrame = CreateFrame("Frame", "QDKP2_Frame2_DropDownMenu", self.Frame, "UIDropDownMenuTemplate")
     self.SubMenuFrame = CreateFrame("Frame", "QDKP2_Frame2_DropDownMenu", self.MenuFrame, "UIDropDownMenuTemplate")
+    
+    -- ДОБАВЬ ЭТУ СТРОКУ ДЛЯ СОЗДАНИЯ ПОИСКА
+    self:CreateSearchUI()
+end
+
+function myClass.CreateSearchUI(self)
+    -- Создаем поле поиска
+    self.SearchBox = CreateFrame("EditBox", "QDKP2_Frame2_SearchBox", self.Frame, "InputBoxTemplate")
+    self.SearchBox:SetSize(120, 20)
+    self.SearchBox:SetPoint("TOPLEFT", self.Frame, "TOPLEFT", 13, -8)  -- Верхний левый угол
+    self.SearchBox:SetAutoFocus(false)
+    self.SearchBox:SetScript("OnTextChanged", function(self)
+        QDKP2GUI_Roster:OnSearchTextChanged()
+    end)
+    self.SearchBox:SetScript("OnEscapePressed", function(self)
+        QDKP2GUI_Roster:ClearSearch()
+        self:ClearFocus()
+    end)
+    self.SearchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    -- Добавляем placeholder текст
+    self.SearchBox:SetText("Поиск...")
+    self.SearchBox:SetTextColor(0.5, 0.5, 0.5)
+    self.SearchBox:SetScript("OnEditFocusGained", function(self)
+        if self:GetText() == "Поиск..." then
+            self:SetText("")
+            self:SetTextColor(1, 1, 1)
+        end
+    end)
+    self.SearchBox:SetScript("OnEditFocusLost", function(self)
+        if self:GetText() == "" then
+            self:SetText("Поиск...")
+            self:SetTextColor(0.5, 0.5, 0.5)
+        end
+    end)
 end
 
 function myClass.Show(self)
@@ -70,6 +112,7 @@ function myClass.Refresh(self, forceResort)
         return ;
     end
     QDKP2_Debug(3, "GUI-roster", "Refreshing")
+    
     local Complete = QDKP2_OfficerMode()
     if Complete then
         QDKP2_frame2_showRaid:Hide()
@@ -85,6 +128,10 @@ function myClass.Refresh(self, forceResort)
     --QDKP2frame2_selectList_Session:SetChecked(false)
 
     myClass:PupulateList()
+    
+    -- ПРИМЕНЯЕМ ФИЛЬТР ПОИСКА
+    local originalList = self.List
+    self.List = self:ApplySearchFilter()
 
     if self.Sel == "guildonline" or self.Sel == "guild" then
         myClass:ShowColumn('deltatotal', false)
@@ -154,6 +201,34 @@ function myClass.Refresh(self, forceResort)
         forceResort = true;
     end
     self:SortList(nil, nil, forceResort)
+
+    -- ДОБАВЛЯЕМ СЧЕТЧИК ИГРОКОВ В ЗАГОЛОВОК С УЧЕТОМ ПОИСКА
+    local displayCount = tostring(#self.List)
+    local totalCount = tostring(#originalList)
+    
+    -- Обновляем заголовок окна с информацией о поиске
+    if self.SearchText and self.SearchText ~= "" and self.SearchText ~= "Поиск..." then
+        if self.Sel == 'guild' then
+            QDKP2_Frame2_Header:SetText("Гильдия - " .. displayCount .. "/" .. totalCount)
+        elseif self.Sel == 'guildonline' then
+            QDKP2_Frame2_Header:SetText("Онлайн - " .. displayCount .. "/" .. totalCount)
+        elseif self.Sel == 'raid' then
+            QDKP2_Frame2_Header:SetText("Рейд - " .. displayCount .. "/" .. totalCount)
+        elseif self.Sel == 'bid' then
+            QDKP2_Frame2_Header:SetText("Ставки - " .. displayCount .. "/" .. totalCount)
+        end
+    else
+        -- оригинальный заголовок без информации о поиске
+        if self.Sel == 'guild' then
+            QDKP2_Frame2_Header:SetText("Гильдия - " .. displayCount)
+        elseif self.Sel == 'guildonline' then
+            QDKP2_Frame2_Header:SetText("Онлайн - " .. displayCount)
+        elseif self.Sel == 'raid' then
+            QDKP2_Frame2_Header:SetText("Рейд - " .. displayCount)
+        elseif self.Sel == 'bid' then
+            QDKP2_Frame2_Header:SetText("Ставки - " .. displayCount)
+        end
+    end
 
     if self.Offset > #self.List then
         self.Offset = #self.List - 1;
@@ -298,13 +373,24 @@ end
 
 function myClass.PupulateList(self)
     if self.Sel == 'guild' then
-        self.List = QDKP2name
+        if not self.ShowAlts then
+            self.List = {}
+            for i, name in pairs(QDKP2name) do
+                if not QDKP2_IsAlt(name) then  -- показываем только не-альтов
+                    table.insert(self.List, name)
+                end
+            end
+        else
+            self.List = QDKP2name
+        end
         QDKP2frame2_selectList_guild:SetChecked(true)
     elseif self.Sel == 'guildonline' then
         self.List = {}
         for i, name in pairs(QDKP2name) do
             if QDKP2online[name] and not QDKP2_IsExternal(name) then
-                table.insert(self.List, name);
+                if self.ShowAlts or not QDKP2_IsAlt(name) then  -- фильтр для онлайн
+                    table.insert(self.List, name)
+                end
             end
         end
     elseif self.Sel == 'raid' then
@@ -329,6 +415,66 @@ function myClass.PupulateList(self)
         end
     end
     QDKP2_Debug(2, "GUI-Roster", "List populated. Voices=" .. tostring(#self.List))
+end
+
+function myClass.ApplySearchFilter(self)
+    if not self.SearchText or self.SearchText == "" or self.SearchText == "Поиск..." then
+        return self.List
+    end
+    
+    local filteredList = {}
+    local searchTextLower = string.lower(self.SearchText)
+    
+    for i, name in pairs(self.List) do
+        local found = false
+        
+        -- Проверяем текущее имя персонажа
+        local displayName = QDKP2_GetName(name) or name
+        local displayNameLower = string.lower(displayName)
+        
+        if string.find(displayNameLower, searchTextLower, 1, true) then
+            found = true
+        end
+        
+        -- Если включен поиск по мейну, проверяем основного персонажа
+        if not found and self.SearchByMain then
+            local mainName = QDKP2_GetMain(name)
+            if mainName then
+                local mainNameLower = string.lower(mainName)
+                if string.find(mainNameLower, searchTextLower, 1, true) then
+                    found = true
+                end
+            end
+        end
+        
+        if found then
+            table.insert(filteredList, name)
+        end
+    end
+    
+    return filteredList
+end
+
+function myClass.OnSearchTextChanged(self)
+    if self.SearchBox then
+        local text = self.SearchBox:GetText()
+        if text == "Поиск..." then
+            self.SearchText = ""
+        else
+            self.SearchText = text
+        end
+        self:Refresh(true)
+    end
+end
+
+function myClass.ClearSearch(self)
+    self.SearchText = ""
+    if self.SearchBox then
+        self.SearchBox:SetText("Поиск...")
+        self.SearchBox:SetTextColor(0.5, 0.5, 0.5)
+    end
+    self.SearchByMain = false
+    self:Refresh(true)
 end
 
 function myClass.ShowColumn(self, Column, todo)
@@ -563,6 +709,26 @@ function myClass.SelectInvert()
     myClass:SelectPlayer(out)
 end
 
+function myClass.ToggleShowAlts(self)
+    self.ShowAlts = not self.ShowAlts
+    self:Refresh(true)  -- forceResort = true
+end
+
+function myClass.GetPlayerCounts(self)
+    local totalMembers = #QDKP2name
+    local mainMembers = 0
+    local altMembers = 0
+    
+    for i, name in pairs(QDKP2name) do
+        if QDKP2_IsAlt(name) then
+            altMembers = altMembers + 1
+        else
+            mainMembers = mainMembers + 1
+        end
+    end
+    
+    return totalMembers, mainMembers, altMembers
+end
 
 -------------------- Scroll ------------------
 
@@ -849,6 +1015,15 @@ local LogVoices = {
     RosterUpdate = { text = QDKP2_LOC_GUIUPDATEROSTER, func = myClass.Update },
     MenuClose = { text = QDKP2_LOC_GUICLOSEMENU, func = QDKP2GUI_CloseMenus },
     spacer = { text = "", notClickable = true },
+	ShowAlts = { 
+    text = QDKP2_LOC_GUISHOWALTS or "Показывать альтов",  -- можно добавить локализацию
+    checked = function()
+        return myClass.ShowAlts
+    end,
+    func = function()
+        myClass:ToggleShowAlts()
+    end
+},
 }
 
 function myClass.PlayerMenu(self, List)
@@ -931,6 +1106,8 @@ function myClass.RosterMenu(self)
     table.insert(menu, LogVoices.SelectAll)
     table.insert(menu, LogVoices.SelectNone)
     table.insert(menu, LogVoices.SelectInvert)
+	table.insert(menu, 2, LogVoices.spacer)  -- разделитель
+    table.insert(menu, 2, LogVoices.ShowAlts)  -- наш новый пункт
     if self.Sel == "guild" or self.Sel == "guildonline" then
         menu[1].text = QDKP2_LOC_GUIGUILDROSTERMENU
         if QDKP2_OfficerMode() then
